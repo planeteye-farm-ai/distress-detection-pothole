@@ -11,7 +11,7 @@ import folium
 from fpdf import FPDF
 
 # ------------------------
-# Logging configuration
+# Logging config
 # ------------------------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
