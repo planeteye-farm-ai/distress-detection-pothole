@@ -1,3 +1,9 @@
+databases:
+  - name: distress-detection
+    plan: starter
+    databaseName: distress-detection
+    user: distress_detection_user
+
 services:
   - type: web
     name: road-pothole-detector
@@ -18,13 +24,7 @@ services:
         fromDatabase:
           name: distress-detection
           property: internalConnectionString
-    disks:
-      - name: data-storage
-        mountPath: /data
-        sizeGB: 1
-
-databases:
-  - name: distress-detection
-    plan: starter
-    databaseName: distress-detection
-    user: distress_detection_user
+disks:
+  - name: data-storage
+    mountPath: /data
+    sizeGB: 1
