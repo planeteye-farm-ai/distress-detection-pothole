@@ -9,6 +9,8 @@ import torch
 from segment_anything import sam_model_registry, SamPredictor
 import folium
 from fpdf import FPDF
+import eventlet
+eventlet.monkey_patch()
 
 # ------------------------
 # Logging configuration
@@ -134,6 +136,13 @@ def overlay_image(image_np, mask):
     overlay = image_np.copy()
     overlay[mask > 0] = [255, 0, 0]
     return overlay
+def safe_float(value):
+    try:
+        if value in (None, '', 'null', 'undefined'):
+            return 0.0
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
 
 # ------------------------
 # Routes
@@ -159,8 +168,8 @@ def detect_pothole():
         return jsonify({'error': 'No image selected.'}), 400
 
     try:
-        latitude = float(request.form.get('latitude', 0.0))
-        longitude = float(request.form.get('longitude', 0.0))
+        latitude = safe_float(request.form.get('latitude', 0.0))
+        longitude = safe_float(request.form.get('longitude', 0.0))
 
         image = Image.open(image_file.stream).convert('RGB')
         image_np = np.array(image)
