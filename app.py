@@ -62,17 +62,26 @@ predictor = None
 sam_loaded = False
 
 def init_sam():
-    """Initialize SAM model"""
+    """Initialize SAM model from local disk only."""
     global predictor, sam_loaded
     try:
         device = "cuda" if torch.cuda.is_available() else "cpu"
         logger.info(f"Using device: {device}")
 
         if not os.path.exists(MODEL_PATH):
-            download_model()
-        if not os.path.exists(MODEL_PATH):
-            logger.error("SAM checkpoint missing after download!")
+            logger.warning(f"SAM model not found at {MODEL_PATH}. Waiting for manual upload.")
             return False
+
+        sam = sam_model_registry["vit_b"](checkpoint=MODEL_PATH)
+        sam.to(device)
+        predictor = SamPredictor(sam)
+        sam_loaded = True
+        logger.info("✅ SAM model loaded successfully from disk!")
+        return True
+    except Exception as e:
+        logger.error(f"SAM initialization error: {str(e)}")
+        return False
+
 
         sam = sam_model_registry["vit_b"](checkpoint=MODEL_PATH)
         sam.to(device)
