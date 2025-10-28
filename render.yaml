@@ -2,13 +2,7 @@ services:
   - type: web
     name: road-pothole-detector
     env: python
-    plan: standard  # 🧠 Upgrade for more memory and better stability
-
-    # 🗂 Persistent disk for SAM model storage
-    disks:
-      - name: sam-model-storage
-        mountPath: /data/models
-        sizeGB: 1
+    plan: standard   # 🧠 Standard = better memory & stability
 
     buildCommand: |
       set -e
@@ -19,13 +13,13 @@ services:
       MODEL_PATH="/data/models/sam_vit_b_01ec64.pth"
       echo "=== Checking SAM model at ${MODEL_PATH} ==="
 
-      # ✅ Ensure model exists or download once
+      # ✅ Ensure the model exists or download it once
       if [ ! -f "${MODEL_PATH}" ] || [ $(stat -c%s "${MODEL_PATH}" 2>/dev/null || echo 0) -lt 375000000 ]; then
         echo "⬇️ Downloading SAM model to persistent disk..."
         mkdir -p /data/models
         curl -L --progress-bar -o "${MODEL_PATH}" \
           "https://huggingface.co/AkhileshYR/sam-vit-b-model/resolve/main/sam_vit_b_01ec64.pth" \
-          || echo "⚠️ Download failed — will retry at runtime."
+          || echo "⚠️ Download failed — you can manually upload later at /upload_model"
       else
         echo "✅ SAM model already present on persistent disk."
       fi
@@ -58,6 +52,12 @@ services:
       - key: UPLOAD_FOLDER
         value: uploads
       - key: MAX_CONTENT_LENGTH
-        value: "16777216"
+        value: "1073741824"  # 1 GB limit for model upload
 
     healthCheckPath: /health
+
+# 🗂 Persistent Disk (mounted before build & runtime)
+disks:
+  - name: sam-model-storage
+    mountPath: /data/models
+    sizeGB: 1
