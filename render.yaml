@@ -2,46 +2,49 @@ services:
   - type: web
     name: road-pothole-detector
     env: python
-    plan: free # Note: The free plan may have insufficient memory for this application, leading to crashes.
-               # Upgrade to a paid plan for better stability.
+    plan: standard  # 🧠 Upgrade for more memory and better stability
 
-    # Add a persistent disk to store the SAM model
+    # 🗂 Persistent disk for SAM model storage
     disks:
       - name: sam-model-storage
         mountPath: /data/models
         sizeGB: 1
 
     buildCommand: |
+      set -e
+      echo "=== 🧠 Starting build for road-pothole-detector ==="
       pip install --upgrade pip
       pip install -r requirements.txt
 
-      # Check for SAM model on the persistent disk and download if needed
       MODEL_PATH="/data/models/sam_vit_b_01ec64.pth"
-      echo "=== Checking for SAM model at ${MODEL_PATH} ==="
+      echo "=== Checking SAM model at ${MODEL_PATH} ==="
 
+      # ✅ Ensure model exists or download once
       if [ ! -f "${MODEL_PATH}" ] || [ $(stat -c%s "${MODEL_PATH}" 2>/dev/null || echo 0) -lt 375000000 ]; then
-        echo "=== Downloading SAM model to persistent disk ==="
+        echo "⬇️ Downloading SAM model to persistent disk..."
         mkdir -p /data/models
-        curl -L --progress-bar -o "${MODEL_PATH}" "https://huggingface.co/AkhileshYR/sam-vit-b-model/resolve/main/sam_vit_b_01ec64.pth" || echo "Download failed, will retry at runtime"
+        curl -L --progress-bar -o "${MODEL_PATH}" \
+          "https://huggingface.co/AkhileshYR/sam-vit-b-model/resolve/main/sam_vit_b_01ec64.pth" \
+          || echo "⚠️ Download failed — will retry at runtime."
       else
-        echo "=== SAM model already present on persistent disk ==="
+        echo "✅ SAM model already present on persistent disk."
       fi
 
-      ls -lh "${MODEL_PATH}" || echo "No SAM model found."
+      ls -lh "${MODEL_PATH}" || echo "⚠️ SAM model not found!"
 
-    startCommand: gunicorn --worker-class eventlet --workers 1 --bind 0.0.0.0:$PORT --timeout 600 app:app
+    startCommand: gunicorn --worker-class eventlet --workers 2 --threads 4 --bind 0.0.0.0:$PORT --timeout 600 app:app
 
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
       - key: FLASK_ENV
         value: production
-      - key: MODEL_DIR # Set the model directory to the disk mount path
+      - key: MODEL_DIR
         value: /data/models
       - key: SECRET_KEY
         generateValue: true
       - key: WEB_CONCURRENCY
-        value: 1
+        value: 2
       - key: DB_HOST
         value: dpg-d3su87c9c44c73cdki1g-a.oregon-postgres.render.com
       - key: DB_PORT
