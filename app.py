@@ -149,78 +149,86 @@ def health():
 @app.route('/detect', methods=['POST'])
 def detect_pothole():
     if not sam_loaded:
-        return jsonify({'error': 'SAM not loaded'}), 500
+        return jsonify({'error': 'SAM model is not available or failed to load.'}), 503
+
     if 'image' not in request.files:
-        return jsonify({'error': 'No image uploaded'}), 400
+        return jsonify({'error': 'No image provided.'}), 400
 
-    image_file = request.files['image']
-    if image_file.filename == '':
-        return jsonify({'error': 'No image selected'}), 400
+    image_file = request.files.get('image')
+    if not image_file or image_file.filename == '':
+        return jsonify({'error': 'No image selected.'}), 400
 
-    latitude = float(request.form.get('latitude', 0.0))
-    longitude = float(request.form.get('longitude', 0.0))
+    try:
+        latitude = float(request.form.get('latitude', 0.0))
+        longitude = float(request.form.get('longitude', 0.0))
 
-    image = Image.open(image_file.stream).convert('RGB')
-    image_np = np.array(image)
+        image = Image.open(image_file.stream).convert('RGB')
+        image_np = np.array(image)
 
-    predictor.set_image(image_np)
-    h, w = image_np.shape[:2]
-    input_point = np.array([[w // 2, h // 2]])
-    input_label = np.array([1])
+        # SAM prediction
+        predictor.set_image(image_np)
+        h, w, _ = image_np.shape
+        input_point = np.array([[w / 2, h / 2]])
+        input_label = np.array([1])
 
-    masks, scores, _ = predictor.predict(
-        point_coords=input_point,
-        point_labels=input_label,
-        multimask_output=False
-    )
+        masks, scores, _ = predictor.predict(
+            point_coords=input_point,
+            point_labels=input_label,
+            multimask_output=False,
+        )
 
-    if len(masks) == 0:
-        return jsonify({'success': False, 'error': 'No defects found'})
+        if not masks.any():
+            return jsonify({'success': False, 'error': 'No defects were found in the image.'})
 
-    mask = masks[0]
-    confidence = float(scores[0])
-    area_pixels = np.sum(mask)
-    area_m2 = estimate_area(area_pixels)
-    severity = determine_severity(area_m2)
-    depth_meters = estimate_depth(area_m2)
+        # Process the results
+        mask = masks[0]
+        confidence = float(scores[0])
+        area_pixels = np.sum(mask)
+        area_m2 = estimate_area(area_pixels)
+        severity = determine_severity(area_m2)
+        depth_meters = estimate_depth(area_m2)
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"pothole_{timestamp}.jpg"
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        # Save the annotated image
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"pothole_{timestamp}.jpg"
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        overlay = overlay_image(image_np, mask)
+        Image.fromarray(overlay).save(filepath)
 
-    overlay = overlay_image(image_np, mask)
-    Image.fromarray(overlay).save(filepath)
+        # Store in database
+        with sqlite3.connect(app.config['DATABASE']) as conn:
+            c = conn.cursor()
+            c.execute('''
+                INSERT INTO potholes (latitude, longitude, severity, area, depth_meters, image_path, confidence)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (latitude, longitude, severity, area_m2, depth_meters, filepath, confidence))
+            pothole_id = c.lastrowid
+            conn.commit()
 
-    conn = sqlite3.connect(app.config['DATABASE'])
-    c = conn.cursor()
-    c.execute('''
-        INSERT INTO potholes (latitude, longitude, severity, area, depth_meters, image_path, confidence)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    ''', (latitude, longitude, severity, area_m2, depth_meters, filepath, confidence))
-    pothole_id = c.lastrowid
-    conn.commit()
-    conn.close()
+        # Notify clients via Socket.IO
+        socketio.emit('new_pothole', {
+            'id': pothole_id,
+            'latitude': latitude,
+            'longitude': longitude,
+            'severity': severity,
+            'area': area_m2,
+            'depth_meters': depth_meters,
+            'confidence': confidence,
+            'timestamp': datetime.now().isoformat()
+        })
 
-    socketio.emit('new_pothole', {
-        'id': pothole_id,
-        'latitude': latitude,
-        'longitude': longitude,
-        'severity': severity,
-        'area': area_m2,
-        'depth_meters': depth_meters,
-        'confidence': confidence,
-        'timestamp': datetime.now().isoformat()
-    })
-
-    return jsonify({
-        'success': True,
-        'pothole_id': pothole_id,
-        'severity': severity,
-        'area_m2': area_m2,
-        'depth_meters': depth_meters,
-        'confidence': confidence,
-        'image_url': f'/image/{filename}'
-    })
+        return jsonify({
+            'success': True,
+            'pothole_id': pothole_id,
+            'severity': severity,
+            'area_m2': area_m2,
+            'depth_meters': depth_meters,
+            'confidence': confidence,
+            'image_url': f'/image/{filename}'
+        })
+    except Exception as e:
+        logger.error(f"An error occurred during pothole detection: {e}", exc_info=True)
+        return jsonify({'error': 'An unexpected error occurred. Please try again.'}), 500
 
 @app.route('/potholes')
 def get_potholes():
