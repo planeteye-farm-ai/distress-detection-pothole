@@ -4,24 +4,40 @@ services:
     env: python
     plan: free # Note: The free plan may have insufficient memory for this application, leading to crashes.
                # Upgrade to a paid plan for better stability.
+
+    # Add a persistent disk to store the SAM model
+    disks:
+      - name: sam-model-storage
+        mountPath: /data/models
+        sizeGB: 1
+
     buildCommand: |
       pip install --upgrade pip
       pip install -r requirements.txt
-      echo "=== Checking for SAM model ==="
-      ls -lh sam_vit_b_01ec64.pth || echo "SAM model not found"
-      if [ ! -f sam_vit_b_01ec64.pth ] || [ $(stat -c%s sam_vit_b_01ec64.pth 2>/dev/null || echo 0) -lt 375000000 ]; then
-        echo "=== Downloading SAM model ==="
-        curl -L --progress-bar -o sam_vit_b_01ec64.pth "https://huggingface.co/AkhileshYR/sam-vit-b-model/resolve/main/sam_vit_b_01ec64.pth" || echo "Download failed, will retry at runtime"
+
+      # Check for SAM model on the persistent disk and download if needed
+      MODEL_PATH="/data/models/sam_vit_b_01ec64.pth"
+      echo "=== Checking for SAM model at ${MODEL_PATH} ==="
+
+      if [ ! -f "${MODEL_PATH}" ] || [ $(stat -c%s "${MODEL_PATH}" 2>/dev/null || echo 0) -lt 375000000 ]; then
+        echo "=== Downloading SAM model to persistent disk ==="
+        mkdir -p /data/models
+        curl -L --progress-bar -o "${MODEL_PATH}" "https://huggingface.co/AkhileshYR/sam-vit-b-model/resolve/main/sam_vit_b_01ec64.pth" || echo "Download failed, will retry at runtime"
       else
-        echo "=== SAM model already present ==="
+        echo "=== SAM model already present on persistent disk ==="
       fi
-      ls -lh sam_vit_b_01ec64.pth || echo "No SAM model"
+
+      ls -lh "${MODEL_PATH}" || echo "No SAM model found."
+
     startCommand: gunicorn --worker-class eventlet --workers 1 --bind 0.0.0.0:$PORT --timeout 600 app:app
+
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
       - key: FLASK_ENV
         value: production
+      - key: MODEL_DIR # Set the model directory to the disk mount path
+        value: /data/models
       - key: SECRET_KEY
         generateValue: true
       - key: WEB_CONCURRENCY
@@ -40,4 +56,5 @@ services:
         value: uploads
       - key: MAX_CONTENT_LENGTH
         value: "16777216"
+
     healthCheckPath: /health

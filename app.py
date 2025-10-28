@@ -33,13 +33,18 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 # Model setup
 # ------------------------
 HF_MODEL_URL = "https://huggingface.co/AkhileshYR/sam-vit-b-model/resolve/main/sam_vit_b_01ec64.pth"
-MODEL_PATH = "sam_vit_b_01ec64.pth"
+# Use MODEL_DIR from environment variable, default to current directory
+MODEL_DIR = os.environ.get("MODEL_DIR", ".")
+MODEL_NAME = "sam_vit_b_01ec64.pth"
+MODEL_PATH = os.path.join(MODEL_DIR, MODEL_NAME)
 
 def download_model():
     """Download SAM model from Hugging Face if missing"""
     if not os.path.exists(MODEL_PATH):
-        logger.info("Downloading SAM model from Hugging Face...")
+        logger.info(f"Downloading SAM model to {MODEL_PATH}...")
         try:
+            # Ensure the target directory exists
+            os.makedirs(MODEL_DIR, exist_ok=True)
             with requests.get(HF_MODEL_URL, stream=True, timeout=120) as r:
                 r.raise_for_status()
                 total_size = int(r.headers.get('content-length', 0))
