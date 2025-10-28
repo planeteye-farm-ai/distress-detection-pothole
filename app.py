@@ -338,21 +338,40 @@ def initialize_app():
 initialize_app()
 @app.route('/upload_model', methods=['POST'])
 def upload_model():
-    file = request.files.get('file')
-    if not file:
-        return jsonify({'error': 'No file uploaded'}), 400
-
-    model_dir = os.environ.get("MODEL_DIR", "/data/models")
-    os.makedirs(model_dir, exist_ok=True)
-    save_path = os.path.join(model_dir, "sam_vit_b_01ec64.pth")
-
+    """Upload SAM checkpoint to /data/models and reload it immediately."""
     try:
+        file = request.files.get('file')
+        if not file:
+            return jsonify({'error': 'No file uploaded'}), 400
+
+        model_dir = os.environ.get("MODEL_DIR", "/data/models")
+        os.makedirs(model_dir, exist_ok=True)
+        save_path = os.path.join(model_dir, "sam_vit_b_01ec64.pth")
+
         file.save(save_path)
         size = os.path.getsize(save_path)
-        return jsonify({'success': True, 'path': save_path, 'size_bytes': size})
+
+        logger.info(f"✅ Model uploaded to {save_path} ({size/1e6:.2f} MB)")
+
+        # 🔁 Attempt to reload SAM immediately
+        try:
+            global sam_predictor
+            sam_predictor = init_sam()  # call your existing init_sam() method
+            logger.info("✅ SAM reloaded successfully after upload.")
+        except Exception as sam_error:
+            logger.error(f"⚠️ Failed to reload SAM: {sam_error}")
+
+        return jsonify({
+            'success': True,
+            'path': save_path,
+            'size_bytes': size,
+            'message': 'Model uploaded successfully and reload attempted.'
+        }), 200
+
     except Exception as e:
-        logger.error(f"Model upload failed: {e}")
+        logger.error(f"❌ Model upload failed: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
+
 
 
 
