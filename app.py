@@ -297,11 +297,16 @@ def show_map():
 # Main
 # ------------------------
 def initialize_app():
+    """Initializes the database and the SAM model."""
+    logger.info("🚀 Starting application initialization...")
     init_db()
     init_sam()
-    logger.info("✅ Application initialized successfully.")
+    logger.info("✅ Application fully initialized and ready.")
+
+# Initialize the application immediately to ensure the model is loaded by Gunicorn
+initialize_app()
 
 if __name__ == "__main__":
-    initialize_app()
-    socketio.run(app, host="0.0.0.0", port=5000)
-
+    # This block is for local development only
+    logger.info("Running Flask app in debug mode for local development.")
+    socketio.run(app, host="0.0.0.0", port=5000, debug=True)
