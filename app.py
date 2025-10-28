@@ -327,6 +327,24 @@ def initialize_app():
 
 # Initialize the application immediately to ensure the model is loaded by Gunicorn
 initialize_app()
+@app.route('/upload_model', methods=['POST'])
+def upload_model():
+    """Temporary route to upload SAM model file directly to Render disk."""
+    try:
+        file = request.files.get("file")
+        if not file:
+            return "❌ No file uploaded", 400
+
+        os.makedirs("/data/models", exist_ok=True)
+        save_path = "/data/models/sam_vit_b_01ec64.pth"
+        file.save(save_path)
+
+        size = os.path.getsize(save_path) / (1024 * 1024)
+        return f"✅ Model uploaded successfully ({size:.2f} MB) at {save_path}", 200
+
+    except Exception as e:
+        return f"❌ Upload failed: {str(e)}", 500
+
 
 if __name__ == "__main__":
     # This block is for local development only
