@@ -35,17 +35,19 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 # Model setup
 # ------------------------
 HF_MODEL_URL = "https://huggingface.co/AkhileshYR/sam-vit-b-model/resolve/main/sam_vit_b_01ec64.pth"
-# Use MODEL_DIR from environment variable, default to current directory
 MODEL_DIR = os.environ.get("MODEL_DIR", ".")
 MODEL_NAME = "sam_vit_b_01ec64.pth"
 MODEL_PATH = os.path.join(MODEL_DIR, MODEL_NAME)
+
+predictor = None
+sam_loaded = False
+
 
 def download_model():
     """Download SAM model from Hugging Face if missing"""
     if not os.path.exists(MODEL_PATH):
         logger.info(f"Downloading SAM model to {MODEL_PATH}...")
         try:
-            # Ensure the target directory exists
             os.makedirs(MODEL_DIR, exist_ok=True)
             with requests.get(HF_MODEL_URL, stream=True, timeout=120) as r:
                 r.raise_for_status()
@@ -58,8 +60,6 @@ def download_model():
         except Exception as e:
             logger.error(f"❌ Failed to download SAM model: {e}")
 
-predictor = None
-sam_loaded = False
 
 def init_sam():
     """Initialize SAM model from local disk only."""
@@ -83,19 +83,6 @@ def init_sam():
         return False
 
 
-        sam = sam_model_registry["vit_b"](checkpoint=MODEL_PATH)
-        sam.to(device)
-        predictor = SamPredictor(sam)
-        sam_loaded = True
-        logger.info("✅ SAM model loaded successfully!")
-        return True
-    except Exception as e:
-        logger.error(f"SAM initialization error: {str(e)}")
-        return False
-
-# ------------------------
-# Database setup
-# ------------------------
 # ------------------------
 # Database setup
 # ------------------------
@@ -130,8 +117,10 @@ def estimate_area(area_pixels):
     pixels_per_meter = 100
     return area_pixels / (pixels_per_meter ** 2)
 
+
 def estimate_depth(area_m2):
     return 0.05 + min(area_m2 * 0.5, 0.5)
+
 
 def determine_severity(area_m2):
     if area_m2 < 0.1:
@@ -141,10 +130,13 @@ def determine_severity(area_m2):
     else:
         return 'high'
 
+
 def overlay_image(image_np, mask):
     overlay = image_np.copy()
     overlay[mask > 0] = [255, 0, 0]
     return overlay
+
+
 def safe_float(value):
     try:
         if value in (None, '', 'null', 'undefined'):
@@ -153,6 +145,7 @@ def safe_float(value):
     except (TypeError, ValueError):
         return 0.0
 
+
 # ------------------------
 # Routes
 # ------------------------
@@ -160,9 +153,11 @@ def safe_float(value):
 def index():
     return render_template('index1.html', sam_loaded=sam_loaded)
 
+
 @app.route('/health')
 def health():
     return jsonify({"status": "ok"}), 200
+
 
 @app.route('/detect', methods=['POST'])
 def detect_pothole():
@@ -198,7 +193,7 @@ def detect_pothole():
         if not masks.any():
             return jsonify({'success': False, 'error': 'No defects were found in the image.'})
 
-        # Process the results
+        # Process results
         mask = masks[0]
         confidence = float(scores[0])
         area_pixels = np.sum(mask)
@@ -206,14 +201,14 @@ def detect_pothole():
         severity = determine_severity(area_m2)
         depth_meters = estimate_depth(area_m2)
 
-        # Save the annotated image
+        # Save image
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"pothole_{timestamp}.jpg"
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         overlay = overlay_image(image_np, mask)
         Image.fromarray(overlay).save(filepath)
 
-        # Store in database
+        # Save to DB
         with sqlite3.connect(app.config['DATABASE']) as conn:
             c = conn.cursor()
             c.execute('''
@@ -223,7 +218,7 @@ def detect_pothole():
             pothole_id = c.lastrowid
             conn.commit()
 
-        # Notify clients via Socket.IO
+        # Notify clients
         socketio.emit('new_pothole', {
             'id': pothole_id,
             'latitude': latitude,
@@ -248,6 +243,7 @@ def detect_pothole():
         logger.error(f"An error occurred during pothole detection: {e}", exc_info=True)
         return jsonify({'error': 'An unexpected error occurred. Please try again.'}), 500
 
+
 @app.route('/potholes')
 def get_potholes():
     conn = sqlite3.connect(app.config['DATABASE'])
@@ -271,6 +267,7 @@ def get_potholes():
         })
     return jsonify(result)
 
+
 @app.route('/image/<filename>')
 def get_image(filename):
     path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -278,64 +275,7 @@ def get_image(filename):
         return send_file(path)
     return abort(404)
 
-@app.route('/export/<int:pothole_id>')
-def export_pdf(pothole_id):
-    conn = sqlite3.connect(app.config['DATABASE'])
-    c = conn.cursor()
-    c.execute('SELECT * FROM potholes WHERE id=?', (pothole_id,))
-    row = c.fetchone()
-    conn.close()
-    if not row:
-        return abort(404)
 
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", "B", 16)
-    pdf.cell(0, 10, f"Pothole Report #{row[0]}", ln=True)
-    pdf.set_font("Arial", "", 12)
-    pdf.ln(5)
-    pdf.cell(0, 8, f"Latitude: {row[1]}", ln=True)
-    pdf.cell(0, 8, f"Longitude: {row[2]}", ln=True)
-    pdf.cell(0, 8, f"Severity: {row[3]}", ln=True)
-    pdf.cell(0, 8, f"Area: {row[4]:.2f} m²", ln=True)
-    pdf.cell(0, 8, f"Depth: {row[5]:.2f} m", ln=True)
-    pdf.cell(0, 8, f"Confidence: {row[7]*100:.1f}%", ln=True)
-    pdf.cell(0, 8, f"Timestamp: {row[8]}", ln=True)
-    pdf.ln(5)
-    if os.path.exists(row[6]):
-        pdf.image(row[6], w=150)
-    pdf_path = os.path.join(app.config['UPLOAD_FOLDER'], f"pothole_report_{row[0]}.pdf")
-    pdf.output(pdf_path)
-    return send_file(pdf_path)
-
-@app.route('/map')
-def show_map():
-    conn = sqlite3.connect(app.config['DATABASE'])
-    c = conn.cursor()
-    c.execute('SELECT latitude, longitude, severity, id FROM potholes')
-    rows = c.fetchall()
-    conn.close()
-    center = (rows[0][0], rows[0][1]) if rows else (19.0760, 72.8777)  # Mumbai default
-    m = folium.Map(location=center, zoom_start=12)
-    for lat, lon, severity, pid in rows:
-        color = 'red' if severity == 'high' else 'orange' if severity == 'medium' else 'green'
-        folium.Marker([lat, lon],
-                      popup=f"Pothole #{pid}\nSeverity: {severity}",
-                      icon=folium.Icon(color=color)).add_to(m)
-    return m._repr_html_()
-
-# ------------------------
-# Main
-# ------------------------
-def initialize_app():
-    """Initializes the database and the SAM model."""
-    logger.info("🚀 Starting application initialization...")
-    init_db()
-    init_sam()
-    logger.info("✅ Application fully initialized and ready.")
-
-# Initialize the application immediately to ensure the model is loaded by Gunicorn
-initialize_app()
 @app.route('/upload_model', methods=['POST'])
 def upload_model():
     """Upload SAM checkpoint to /data/models and reload it immediately."""
@@ -353,13 +293,10 @@ def upload_model():
 
         logger.info(f"✅ Model uploaded to {save_path} ({size/1e6:.2f} MB)")
 
-        # 🔁 Attempt to reload SAM immediately
-        try:
-            global sam_predictor
-            sam_predictor = init_sam()  # call your existing init_sam() method
-            logger.info("✅ SAM reloaded successfully after upload.")
-        except Exception as sam_error:
-            logger.error(f"⚠️ Failed to reload SAM: {sam_error}")
+        # Reload SAM immediately
+        global predictor
+        init_sam()
+        logger.info("✅ SAM reloaded successfully after upload.")
 
         return jsonify({
             'success': True,
@@ -373,9 +310,24 @@ def upload_model():
         return jsonify({'error': str(e)}), 500
 
 
+# ------------------------
+# Initialization
+# ------------------------
+def initialize_app():
+    """Initialize database and SAM model."""
+    logger.info("🚀 Starting application initialization...")
+    init_db()
+    init_sam()
+    if sam_loaded:
+        logger.info("✅ SAM model is ready to use.")
+    else:
+        logger.warning("⚠️ SAM model not found. Please upload via /upload_model.")
+    logger.info("✅ Application fully initialized and ready.")
 
+
+# Initialize for Gunicorn
+initialize_app()
 
 if __name__ == "__main__":
-    # This block is for local development only
     logger.info("Running Flask app in debug mode for local development.")
     socketio.run(app, host="0.0.0.0", port=5000, debug=True)
