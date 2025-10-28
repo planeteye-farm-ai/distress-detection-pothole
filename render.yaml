@@ -2,7 +2,8 @@ services:
   - type: web
     name: road-pothole-detector
     env: python
-    plan: free
+    plan: free # Note: The free plan may have insufficient memory for this application, leading to crashes.
+               # Upgrade to a paid plan for better stability.
     buildCommand: |
       pip install --upgrade pip
       pip install -r requirements.txt
@@ -15,7 +16,7 @@ services:
         echo "=== SAM model already present ==="
       fi
       ls -lh sam_vit_b_01ec64.pth || echo "No SAM model"
-    startCommand: gunicorn --worker-class eventlet --workers 1 --bind 0.0.0.0:$PORT app:app
+    startCommand: gunicorn --worker-class eventlet --workers 1 --bind 0.0.0.0:$PORT --timeout 600 app:app
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
