@@ -47,3 +47,4 @@ psycopg2-binary==2.9.9
 --extra-index-url https://download.pytorch.org/whl/cpu
 gdown==5.2.0
 eventlet
+psutil
