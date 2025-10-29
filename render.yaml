@@ -5,11 +5,11 @@ services:
   - type: web
     name: distress-detection-pothole
     env: python
-    plan: pro  # 💪 Pro plan = 4 GB RAM, higher CPU priority
+    plan: standard  # 💪 Pro plan = 4 GB RAM, higher CPU priority
 
     buildCommand: |
       set -e
-      echo "=== 🧠 Building Distress Detection App (Pro Plan) ==="
+      echo "=== 🧠 Building Distress Detection App ==="
       pip install --upgrade pip
       pip install -r requirements.txt
 
