@@ -1,35 +1,46 @@
-# Use Python 3.11 slim image
+# Use lightweight Python base
 FROM python:3.11-slim
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+# Install required system tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
+# Copy only requirements first (for Docker layer caching)
 COPY requirements.txt .
 
-# Install Python dependencies
+# Install Python dependencies (no cache to save space)
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Copy the entire project into the container
 COPY . .
 
-# Create uploads directory
-RUN mkdir -p uploads
+# Ensure uploads and model directories exist
+RUN mkdir -p /app/uploads /app/data/models
 
-# Download SAM model during build (optional - can be done at runtime)
-RUN curl -L -o sam_vit_b_01ec64.pth "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth" || echo "Model download failed, will download at runtime"
+# Attempt to download SAM model if missing (optional)
+RUN echo "⬇️ Checking SAM model in /app/data/models..." && \
+    if [ ! -f "/app/data/models/sam_vit_b_01ec64.pth" ]; then \
+        echo "Downloading SAM model..."; \
+        curl -L -o /app/data/models/sam_vit_b_01ec64.pth \
+        "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth" \
+        || echo "⚠️ SAM model download failed — will attempt at runtime."; \
+    else \
+        echo "✅ SAM model already present in /app/data/models/"; \
+    fi
 
-# Expose port (8080 for Cloud Run, will be overridden by platform)
-EXPOSE 8080
-
-# Set environment variables
+# Environment variables
 ENV PORT=8080
 ENV FLASK_ENV=production
+ENV MODEL_DIR=/app/data/models
+ENV UPLOAD_FOLDER=/app/uploads
+ENV PYTHONUNBUFFERED=1
 
-# Run the application using the PORT environment variable from the platform
-CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 --worker-class eventlet app:app
+# Expose default port (Cloud Run injects $PORT)
+EXPOSE 8080
+
+# Start Flask-SocketIO via Gunicorn + Eventlet
+CMD ["gunicorn", "-k", "eventlet", "-w", "1", "--threads", "4", "--timeout", "600", "--bind", "0.0.0.0:$PORT", "app:app"]
