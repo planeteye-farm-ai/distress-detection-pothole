@@ -27,15 +27,7 @@ services:
 
       ls -lh "${MODEL_PATH}" || echo "⚠️ SAM model not yet uploaded!"
 
-    startCommand: >
-      gunicorn
-      --worker-class eventlet
-      --workers 1
-      --threads 2
-      --keep-alive 30
-      --timeout 900
-      --bind 0.0.0.0:$PORT
-      app:app
+    startCommand: gunicorn --worker-class eventlet --workers 1 --bind 0.0.0.0:$PORT app:app
 
     envVars:
       - key: PYTHON_VERSION
