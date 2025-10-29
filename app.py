@@ -210,7 +210,7 @@ def detect_pothole():
             # 🔧 Downscale very large images to reduce RAM usage
             max_size = 512
         if max(image_np.shape[:2]) > max_size:
-            from PIL import Image
+            
             scale = max_size / max(image_np.shape[:2])
             new_w, new_h = int(image_np.shape[1] * scale), int(image_np.shape[0] * scale)
             image = Image.fromarray(image_np).resize((new_w, new_h))
