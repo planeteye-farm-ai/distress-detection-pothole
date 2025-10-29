@@ -372,6 +372,17 @@ def upload_model():
 # -----------------------------------------------------
 def initialize_app():
     logger.info("🚀 Starting application initialization...")
+        # --- Check Render instance tier ---
+    total_ram_gb = psutil.virtual_memory().total / (1024 ** 3)
+    logger.info(f"[RESOURCE] Detected total RAM: {total_ram_gb:.2f} GB")
+
+    if total_ram_gb >= 3.5:
+        logger.info("🟢 Running on Render PRO instance (≈4 GB RAM)")
+    elif total_ram_gb >= 1.8:
+        logger.info("🟡 Running on Render STANDARD instance (≈2 GB RAM)")
+    else:
+        logger.info("🔴 Running on FREE or low-memory instance (<2 GB RAM)")
+
     init_db()
     init_sam()
     if sam_loaded:
