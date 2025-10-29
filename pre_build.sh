@@ -1,23 +1,22 @@
 #!/bin/bash
 set -e
 
-echo "Starting pre-build script..."
+echo "=== 🧠 Checking SAM model in persistent storage (/data/models) ==="
 
-# Download SAM checkpoint if missing or invalid
-SAM_MODEL="sam_vit_b_01ec64.pth"
-if [ ! -f "$SAM_MODEL" ] || [ ! -s "$SAM_MODEL" ]; then
-    echo "SAM checkpoint not found or invalid. Downloading from official source..."
-    curl -L -o "$SAM_MODEL" "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth"
-    
-    # Verify download
-    if [ ! -f "$SAM_MODEL" ] || [ ! -s "$SAM_MODEL" ]; then
-        echo "ERROR: Failed to download SAM checkpoint"
-        exit 1
-    fi
-    
-    echo "SAM checkpoint downloaded successfully."
+MODEL_DIR="/data/models"
+SAM_MODEL="${MODEL_DIR}/sam_vit_b_01ec64.pth"
+
+# Ensure directory exists (Render persistent disk)
+mkdir -p "$MODEL_DIR"
+
+# Just check if it’s there
+if [ -f "$SAM_MODEL" ] && [ -s "$SAM_MODEL" ]; then
+    echo "✅ SAM model already exists:"
     ls -lh "$SAM_MODEL"
 else
-    echo "SAM checkpoint already exists."
-    ls -lh "$SAM_MODEL"
+    echo "❌ SAM model missing in /data/models!"
+    echo "Please upload manually using /upload_model endpoint after first deploy."
+    ls -lh "$MODEL_DIR" || true
 fi
+
+echo "=== ✅ Pre-build check complete ==="
