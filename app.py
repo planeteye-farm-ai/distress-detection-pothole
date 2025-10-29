@@ -161,17 +161,20 @@ def health():
 
 @app.route('/detect', methods=['POST'])
 def detect_pothole():
-    if not sam_loaded:
-        return jsonify({'error': 'SAM model is not available or failed to load.'}), 503
-
-    if 'image' not in request.files:
-        return jsonify({'error': 'No image provided.'}), 400
-
-    image_file = request.files.get('image')
-    if not image_file or image_file.filename == '':
-        return jsonify({'error': 'No image selected.'}), 400
-
     try:
+        if not sam_loaded:
+            return jsonify({
+                'success': False,
+                'error': 'SAM model not loaded yet on server.'
+            }), 503
+
+        if 'image' not in request.files:
+            return jsonify({'success': False, 'error': 'No image provided.'}), 400
+
+        image_file = request.files.get('image')
+        if not image_file or image_file.filename == '':
+            return jsonify({'success': False, 'error': 'No image selected.'}), 400
+
         latitude = safe_float(request.form.get('latitude', 0.0))
         longitude = safe_float(request.form.get('longitude', 0.0))
 
@@ -190,10 +193,12 @@ def detect_pothole():
             multimask_output=False,
         )
 
-        if not masks.any():
-            return jsonify({'success': False, 'error': 'No defects were found in the image.'})
+        if masks is None or not masks.any():
+            return jsonify({
+                'success': False,
+                'error': 'No defects found in the image.'
+            }), 200
 
-        # Process results
         mask = masks[0]
         confidence = float(scores[0])
         area_pixels = np.sum(mask)
@@ -201,7 +206,7 @@ def detect_pothole():
         severity = determine_severity(area_m2)
         depth_meters = estimate_depth(area_m2)
 
-        # Save image
+        # Save image + overlay
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"pothole_{timestamp}.jpg"
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -218,7 +223,7 @@ def detect_pothole():
             pothole_id = c.lastrowid
             conn.commit()
 
-        # Notify clients
+        # Notify via socket
         socketio.emit('new_pothole', {
             'id': pothole_id,
             'latitude': latitude,
@@ -239,9 +244,18 @@ def detect_pothole():
             'confidence': confidence,
             'image_url': f'/image/{filename}'
         })
+
+    except RuntimeError as e:
+        if "out of memory" in str(e).lower():
+            logger.error("⚠️ Out of memory during detection")
+            return jsonify({'success': False, 'error': 'Server ran out of memory'}), 500
+        else:
+            logger.error(f"Runtime error: {e}", exc_info=True)
+            return jsonify({'success': False, 'error': str(e)}), 500
+
     except Exception as e:
-        logger.error(f"An error occurred during pothole detection: {e}", exc_info=True)
-        return jsonify({'error': 'An unexpected error occurred. Please try again.'}), 500
+        logger.error(f"❌ Unexpected detection error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/potholes')
