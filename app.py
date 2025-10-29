@@ -35,9 +35,9 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 # Model setup
 # ------------------------
 HF_MODEL_URL = "https://huggingface.co/AkhileshYR/sam-vit-b-model/resolve/main/sam_vit_b_01ec64.pth"
-MODEL_DIR = os.environ.get("MODEL_DIR", ".")
+MODEL_DIR = os.environ.get("MODEL_DIR", "/data/models")
 MODEL_NAME = "sam_vit_b_01ec64.pth"
-MODEL_PATH = os.path.join(MODEL_DIR, MODEL_NAME)
+MODEL_PATH = os.path.abspath(os.path.join(MODEL_DIR, MODEL_NAME))
 
 predictor = None
 sam_loaded = False
