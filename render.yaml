@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: road-pothole-detector
+    name: distress-detection-pothole
     env: python
     plan: standard   # 🧠 Standard = better memory & stability
 
