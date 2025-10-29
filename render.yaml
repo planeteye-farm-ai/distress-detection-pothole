@@ -6,7 +6,7 @@ services:
 
     buildCommand: |
       set -e
-      echo "=== 🧠 Starting build for road-pothole-detector ==="
+      echo "=== 🧠 Starting build for distress-detection-pothole ==="
       pip install --upgrade pip
       pip install -r requirements.txt
 
