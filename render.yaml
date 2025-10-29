@@ -1,33 +1,39 @@
 # 🚀 Render Deployment Configuration for Distress Detection (Pothole)
-# Optimized for 1 GB RAM (Standard Plan) and persistent SAM model storage
+# Optimized for Pro Plan (4 GB RAM) and persistent SAM model storage
 
 services:
   - type: web
     name: distress-detection-pothole
     env: python
-    plan: standard   # 🧠 Standard = better memory & stability
+    plan: pro  # 💪 Pro plan = 4 GB RAM, higher CPU priority
 
     buildCommand: |
       set -e
-      echo "=== 🧠 Starting build for distress-detection-pothole ==="
+      echo "=== 🧠 Building Distress Detection App (Pro Plan) ==="
       pip install --upgrade pip
       pip install -r requirements.txt
 
       MODEL_PATH="/data/models/sam_vit_b_01ec64.pth"
       echo "=== Checking SAM model at ${MODEL_PATH} ==="
 
-      # ✅ Skip download if model already stored in persistent disk
       if [ -f "${MODEL_PATH}" ]; then
         echo "✅ SAM model already exists in persistent disk — skipping download."
       else
-        echo "⬇️ Model not found — please upload manually at /upload_model after first deploy."
+        echo "⬇️ SAM model not found. You can upload manually via /upload_model after deploy."
         mkdir -p /data/models
       fi
 
       ls -lh "${MODEL_PATH}" || echo "⚠️ SAM model not yet uploaded!"
 
-    # 🧠 One worker = less RAM pressure
-    startCommand: gunicorn --worker-class eventlet --workers 1 --threads 2 --bind 0.0.0.0:$PORT --timeout 600 app:app
+    startCommand: >
+      gunicorn
+      --worker-class eventlet
+      --workers 1
+      --threads 2
+      --keep-alive 30
+      --timeout 900
+      --bind 0.0.0.0:$PORT
+      app:app
 
     envVars:
       - key: PYTHON_VERSION
@@ -40,6 +46,12 @@ services:
         generateValue: true
       - key: WEB_CONCURRENCY
         value: 1
+      - key: UPLOAD_FOLDER
+        value: uploads
+      - key: MAX_CONTENT_LENGTH
+        value: "1073741824"  # 1 GB upload limit for model/video files
+      - key: RUNTIME_ENV
+        value: render
       - key: DB_HOST
         value: dpg-d3su87c9c44c73cdki1g-a.oregon-postgres.render.com
       - key: DB_PORT
@@ -50,15 +62,12 @@ services:
         value: distress_db_user
       - key: DB_PASSWORD
         value: xZLgwESqa0z9OeMtZiAlYbidFQqLHDMv
-      - key: UPLOAD_FOLDER
-        value: uploads
-      - key: MAX_CONTENT_LENGTH
-        value: "1073741824"  # 1 GB upload limit for model/video files
 
     healthCheckPath: /health
+    autoDeploy: true
 
-# 🗂 Persistent Disk (for model + uploads)
+# 🗂 Persistent Disk for SAM model + Uploads
 disks:
   - name: sam-model-storage
     mountPath: /data/models
-    sizeGB: 1
+    sizeGB: 2  # 🔒 Increased disk size to 2 GB
