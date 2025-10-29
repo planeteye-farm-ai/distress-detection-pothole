@@ -207,6 +207,17 @@ def detect_pothole():
 
         # SAM prediction with no_grad to save memory
         with torch.no_grad():
+            # 🔧 Downscale very large images to reduce RAM usage
+            max_size = 512
+        if max(image_np.shape[:2]) > max_size:
+            from PIL import Image
+            scale = max_size / max(image_np.shape[:2])
+            new_w, new_h = int(image_np.shape[1] * scale), int(image_np.shape[0] * scale)
+            image = Image.fromarray(image_np).resize((new_w, new_h))
+            image_np = np.array(image)
+            logger.info(f"[OPTIMIZE] Image downscaled to {new_w}x{new_h}")
+
+            
             predictor.set_image(image_np)
             h, w, _ = image_np.shape
             input_point = np.array([[w / 2, h / 2]])
