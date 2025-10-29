@@ -1,36 +1,88 @@
+# 🚀 Render Deployment Configuration for Distress Detection (Pothole)
+# ✅ Optimized for PRO plan (4 GB RAM) + 2 GB persistent SAM model storage
+
 services:
   - type: web
     name: distress-detection-pothole
     env: python
-    plan: pro               # ✅ Pro instance: 4 GB RAM / 2 CPU
+    plan: pro  # ✅ Use Pro plan (4 GB RAM, faster CPU)
+    region: oregon  # 🌎 Optional: use your nearest Render region
+
     buildCommand: |
+      set -e
+      echo "=== 🧠 Building Distress Detection App ==="
       pip install --upgrade pip
       pip install -r requirements.txt
+
+      MODEL_PATH="/data/models/sam_vit_b_01ec64.pth"
+      echo "=== Checking SAM model at ${MODEL_PATH} ==="
+
+      if [ -f "${MODEL_PATH}" ]; then
+        echo "✅ SAM model already exists in persistent disk — skipping download."
+      else
+        echo "⬇️ SAM model not found. You can upload manually via /upload_model after deploy."
+        mkdir -p /data/models
+      fi
+
+      ls -lh "${MODEL_PATH}" || echo "⚠️ SAM model not yet uploaded!"
+
     startCommand: >
-      gunicorn --worker-class eventlet --workers 2 --threads 1 --timeout 600 --bind 0.0.0.0:$PORT app:app
+      gunicorn
+      --worker-class eventlet
+      --workers 1
+      --threads 2
+      --keep-alive 30
+      --timeout 900
+      --bind 0.0.0.0:$PORT
+      app:app
 
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
       - key: FLASK_ENV
         value: production
-      - key: MODEL_TYPE
-        value: vit_b
+      - key: MODEL_DIR
+        value: /data/models
+      - key: UPLOAD_FOLDER
+        value: /data/uploads
+      - key: SECRET_KEY
+        generateValue: true
+      - key: WEB_CONCURRENCY
+        value: 1
       - key: MAX_CONTENT_LENGTH
-        value: "16777216"       # 16 MB upload limit
-      - key: DATABASE_URL
-        value: "sqlite:///potholes.db"
-      - key: PYTHONUNBUFFERED
-        value: "1"
+        value: "1073741824"  # 1 GB upload limit
+      - key: RUNTIME_ENV
+        value: render
+      - key: MODEL_VARIANT
+        value: vit_b
+      - key: ENABLE_MEMORY_LOG
+        value: "true"  # 🧠 Enables logging of memory usage for debugging
 
-    disk:
-      name: persistent-data
-      mountPath: /var/data
-      sizeGB: 2                 # ✅ 2 GB persistent disk
+      # === Database Config ===
+      - key: DB_HOST
+        value: dpg-d3su87c9c44c73cdki1g-a.oregon-postgres.render.com
+      - key: DB_PORT
+        value: "5432"
+      - key: DB_NAME
+        value: distress_db
+      - key: DB_USER
+        value: distress_db_user
+      - key: DB_PASSWORD
+        value: xZLgwESqa0z9OeMtZiAlYbidFQqLHDMv
 
-    healthCheckPath: /
+      # === Optional Model URL (for auto-download if missing) ===
+      - key: HF_MODEL_URL
+        value: https://huggingface.co/AkhileshYR/sam-vit-b-model/resolve/main/sam_vit_b_01ec64.pth
+
+    healthCheckPath: /health
     autoDeploy: true
 
-    # Optional: restrict concurrency slightly for stable performance
-    concurrency:
-      type: connections
-      softLimit: 5
-      hardLimit: 10
+# 🗂 Persistent Disk for SAM model + uploads
+disks:
+  - name: sam-model-storage
+    mountPath: /data/models
+    sizeGB: 2  # 🔒 Persistent disk for model weights
+
+  - name: upload-storage
+    mountPath: /data/uploads
+    sizeGB: 1  # 🧩 Optional separate disk for uploaded images/videos
