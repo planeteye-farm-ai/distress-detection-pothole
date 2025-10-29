@@ -193,7 +193,7 @@ def detect_pothole():
         image = Image.open(image_file.stream).convert('RGB')
         image_np = np.array(image)
 
-        # 🧩 Prevent OOM: Downscale large images
+        # 🧩 Prevent OOM: Downscale huge inputs early
         MAX_RES = 1024
         h, w = image_np.shape[:2]
         if max(h, w) > MAX_RES:
@@ -205,19 +205,16 @@ def detect_pothole():
 
         log_memory_usage("before detection")
 
-        # SAM prediction with no_grad to save memory
+        # 🧠 SAM inference (inside no_grad to save RAM)
         with torch.no_grad():
-            # 🔧 Downscale very large images to reduce RAM usage
             max_size = 512
-        if max(image_np.shape[:2]) > max_size:
-            
-            scale = max_size / max(image_np.shape[:2])
-            new_w, new_h = int(image_np.shape[1] * scale), int(image_np.shape[0] * scale)
-            image = Image.fromarray(image_np).resize((new_w, new_h))
-            image_np = np.array(image)
-            logger.info(f"[OPTIMIZE] Image downscaled to {new_w}x{new_h}")
+            if max(image_np.shape[:2]) > max_size:
+                scale = max_size / max(image_np.shape[:2])
+                new_w, new_h = int(image_np.shape[1] * scale), int(image_np.shape[0] * scale)
+                image = Image.fromarray(image_np).resize((new_w, new_h))
+                image_np = np.array(image)
+                logger.info(f"[OPTIMIZE] Image downscaled to {new_w}x{new_h}")
 
-            
             predictor.set_image(image_np)
             h, w, _ = image_np.shape
             input_point = np.array([[w / 2, h / 2]])
@@ -231,7 +228,8 @@ def detect_pothole():
 
         log_memory_usage("after detection")
 
-        if masks is None or not masks.any():
+        # 🧩 Handle “no mask” safely
+        if masks is None or not np.any(masks):
             return jsonify({
                 'success': False,
                 'error': 'No defects found in the image.'
@@ -244,14 +242,14 @@ def detect_pothole():
         severity = determine_severity(area_m2)
         depth_meters = estimate_depth(area_m2)
 
-        # Save image + overlay
+        # 🖼 Save overlay image
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"pothole_{timestamp}.jpg"
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         overlay = overlay_image(image_np, mask)
         Image.fromarray(overlay).save(filepath)
 
-        # Save to DB
+        # 💾 Persist to SQLite
         with sqlite3.connect(app.config['DATABASE']) as conn:
             c = conn.cursor()
             c.execute('''
@@ -261,7 +259,7 @@ def detect_pothole():
             pothole_id = c.lastrowid
             conn.commit()
 
-        # Notify via socket
+        # 🔔 Notify via Socket.IO
         socketio.emit('new_pothole', {
             'id': pothole_id,
             'latitude': latitude,
@@ -273,8 +271,9 @@ def detect_pothole():
             'timestamp': datetime.now().isoformat()
         })
 
-        # 🧹 Clean memory
-        torch.cuda.empty_cache() if torch.cuda.is_available() else None
+        # 🧹 Clean up memory
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         gc.collect()
         log_memory_usage("after gc cleanup")
 
@@ -292,13 +291,13 @@ def detect_pothole():
         if "out of memory" in str(e).lower():
             logger.error("⚠️ Out of memory during detection")
             return jsonify({'success': False, 'error': 'Server ran out of memory'}), 500
-        else:
-            logger.error(f"Runtime error: {e}", exc_info=True)
-            return jsonify({'success': False, 'error': str(e)}), 500
+        logger.error(f"Runtime error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
 
     except Exception as e:
         logger.error(f"❌ Unexpected detection error: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
+
 
 
 @app.route('/potholes')
