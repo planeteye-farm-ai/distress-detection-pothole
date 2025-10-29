@@ -366,7 +366,7 @@ def upload_model():
         logger.error(f"❌ Model upload failed: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
-
+    logging.info(f"[RESOURCE] Available RAM: {psutil.virtual_memory().total / (1024**3):.2f} GB")
 # -----------------------------------------------------
 # Initialization
 # -----------------------------------------------------
