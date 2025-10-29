@@ -2,29 +2,39 @@
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
-  name: pothole-detector
+  name: distress-detection-pothole
   annotations:
     run.googleapis.com/ingress: all
 spec:
   template:
     metadata:
       annotations:
+        # Gen 2 runtime for better CPU/GPU utilization
         run.googleapis.com/execution-environment: gen2
+
+        # Prevent CPU throttling (important for model inference)
         run.googleapis.com/cpu-throttling: "false"
+
+        # Allow longer requests (model inference time)
+        autoscaling.knative.dev/maxScale: "3"
     spec:
       containerConcurrency: 10
-      timeoutSeconds: 3600
+      timeoutSeconds: 3600  # allows long-running image/video detections
+
       containers:
-        - image: gcr.io/PROJECT_ID/pothole-detector
+        - image: gcr.io/PROJECT_ID/distress-detection-pothole
           ports:
             - containerPort: 8080
+
           env:
             - name: PORT
               value: "8080"
             - name: FLASK_ENV
               value: "production"
+            - name: MODEL_DIR
+              value: "/models"
             - name: DB_HOST
-              value: "your-postgres-host"
+              value: "dpg-d3su87c9c44c73cdki1g-a.oregon-postgres.render.com"
             - name: DB_PORT
               value: "5432"
             - name: DB_NAME
@@ -32,7 +42,16 @@ spec:
             - name: DB_USER
               value: "distress_db_user"
             - name: DB_PASSWORD
-              value: "your-password"
+              value: "xZLgwESqa0z9OeMtZiAlYbidFQqLHDMv"
+            - name: UPLOAD_FOLDER
+              value: "/tmp/uploads"
+            - name: MAX_CONTENT_LENGTH
+              value: "1073741824"  # 1 GB
+
+          volumeMounts:
+            - name: sam-model
+              mountPath: /models
+
           resources:
             limits:
               memory: "2Gi"
@@ -40,3 +59,7 @@ spec:
             requests:
               memory: "1Gi"
               cpu: "1"
+
+      volumes:
+        - name: sam-model
+          emptyDir: {}  # ephemeral storage for SAM model
