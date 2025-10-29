@@ -1,8 +1,16 @@
 #!/bin/bash
-# Start Flask + SocketIO server using Gunicorn + Eventlet
+# 🚀 Start Flask + SocketIO server using Gunicorn + Eventlet
+set -e
+
+# Activate virtual environment
 source .venv/bin/activate
-<<<<<<< HEAD
-gunicorn -k eventlet -w 1 --bind 0.0.0.0:$PORT app:app
-=======
-gunicorn -k eventlet -w 1 --timeout 300 --bind 0.0.0.0:${PORT:-5000} "app:create_app()"
->>>>>>> dcb6b30d9a6b43fc416fed284ed7bf3d7b7b2c40
+
+# Log environment info (optional)
+echo "=== Starting Distress Detection Flask server ==="
+echo "Python version: $(python --version)"
+echo "PORT: ${PORT:-5000}"
+
+# Start Gunicorn with Eventlet worker
+# Single worker prevents memory overload on Render (2GB RAM plan)
+gunicorn --worker-class eventlet --workers 1 --threads 2 \
+  --timeout 600 --bind 0.0.0.0:${PORT:-5000} app:app
