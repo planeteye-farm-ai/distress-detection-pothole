@@ -156,7 +156,11 @@ def index():
 
 @app.route('/health')
 def health():
-    return jsonify({"status": "ok"}), 200
+    return jsonify({
+        "status": "ok",
+        "sam_loaded": sam_loaded
+    }), 200
+
 
 
 @app.route('/detect', methods=['POST'])
