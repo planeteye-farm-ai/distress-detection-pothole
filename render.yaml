@@ -1,12 +1,13 @@
-# 🚀 Render Deployment Configuration for Distress Detection (Pothole)
-# ✅ Optimized for PRO plan (4 GB RAM) + 2 GB persistent SAM model storage
+# 🚀 Render Deployment Configuration for Distress Detection (SAM + YOLOv8-ready)
+# ✅ Optimized for PRO plan (4 GB RAM, 1 CPU core)
+# ✅ Persistent disk for SAM model (2 GB)
+# ✅ Memory-safe tuning (no OOM on 2GB–4GB plans)
 
 services:
   - type: web
     name: distress-detection-pothole
     env: python
-    plan: pro  # ✅ Use Pro plan (4 GB RAM, faster CPU)
-    region: oregon  # 🌎 Optional: use your nearest Render region
+    plan: pro  # ✅ 4 GB RAM, suitable for SAM inference
 
     buildCommand: |
       set -e
@@ -43,12 +44,12 @@ services:
         value: production
       - key: MODEL_DIR
         value: /data/models
-      - key: UPLOAD_FOLDER
-        value: /data/uploads
       - key: SECRET_KEY
         generateValue: true
       - key: WEB_CONCURRENCY
         value: 1
+      - key: UPLOAD_FOLDER
+        value: uploads
       - key: MAX_CONTENT_LENGTH
         value: "1073741824"  # 1 GB upload limit
       - key: RUNTIME_ENV
@@ -56,33 +57,23 @@ services:
       - key: MODEL_VARIANT
         value: vit_b
       - key: ENABLE_MEMORY_LOG
-        value: "true"  # 🧠 Enables logging of memory usage for debugging
-
-      # === Database Config ===
-      - key: DB_HOST
-        value: dpg-d3su87c9c44c73cdki1g-a.oregon-postgres.render.com
-      - key: DB_PORT
-        value: "5432"
-      - key: DB_NAME
-        value: distress_db
-      - key: DB_USER
-        value: distress_db_user
-      - key: DB_PASSWORD
-        value: xZLgwESqa0z9OeMtZiAlYbidFQqLHDMv
-
-      # === Optional Model URL (for auto-download if missing) ===
-      - key: HF_MODEL_URL
-        value: https://huggingface.co/AkhileshYR/sam-vit-b-model/resolve/main/sam_vit_b_01ec64.pth
+        value: true
+      - key: MALLOC_TRIM_THRESHOLD_
+        value: 0   # 🧹 Aggressive memory release back to OS after each request
+      - key: PYTORCH_NO_CUDA_MEMORY_CACHING
+        value: 1   # 🧠 Disable PyTorch’s GPU cache (safe for CPU inference)
+      - key: OMP_NUM_THREADS
+        value: "1"
+      - key: NUMEXPR_MAX_THREADS
+        value: "2"
+      - key: GUNICORN_CMD_ARGS
+        value: "--preload --max-requests 1 --max-requests-jitter 1"
 
     healthCheckPath: /health
     autoDeploy: true
 
-# 🗂 Persistent Disk for SAM model + uploads
+# 🗂 Persistent disk for SAM model + uploads
 disks:
   - name: sam-model-storage
     mountPath: /data/models
-    sizeGB: 2  # 🔒 Persistent disk for model weights
-
-  - name: upload-storage
-    mountPath: /data/uploads
-    sizeGB: 1  # 🧩 Optional separate disk for uploaded images/videos
+    sizeGB: 2  # 💾 2 GB persistent disk for sam_vit_b_01ec64.pth
