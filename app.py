@@ -11,6 +11,18 @@ import folium
 from fpdf import FPDF
 import eventlet
 eventlet.monkey_patch()
+import psutil
+
+def log_memory_usage(tag=""):
+    """Log current process memory usage in MB."""
+    try:
+        process = psutil.Process()
+        mem = process.memory_info().rss / (1024 * 1024)
+        logger.info(f"[MEMORY] {tag}: {mem:.2f} MB used")
+        return mem
+    except Exception as e:
+        logger.warning(f"Unable to log memory: {e}")
+        return 0
 
 # ------------------------
 # Logging configuration
@@ -77,6 +89,8 @@ def init_sam():
         predictor = SamPredictor(sam)
         sam_loaded = True
         logger.info("✅ SAM model loaded successfully from disk!")
+        log_memory_usage("after SAM model load")
+
         return True
     except Exception as e:
         logger.error(f"SAM initialization error: {str(e)}")
@@ -184,6 +198,7 @@ def detect_pothole():
 
         image = Image.open(image_file.stream).convert('RGB')
         image_np = np.array(image)
+        log_memory_usage("before detection")
 
         # SAM prediction
         predictor.set_image(image_np)
@@ -196,6 +211,7 @@ def detect_pothole():
             point_labels=input_label,
             multimask_output=False,
         )
+        log_memory_usage("after detection")
 
         if masks is None or not masks.any():
             return jsonify({
