@@ -43,4 +43,4 @@ ENV PYTHONUNBUFFERED=1
 EXPOSE 8080
 
 # Start Flask-SocketIO via Gunicorn + Eventlet
-CMD ["gunicorn", "-k", "eventlet", "-w", "1", "--threads", "4", "--timeout", "600", "--bind", "0.0.0.0:$PORT", "app:app"]
+CMD ["gunicorn", "-k", "eventlet", "-w", "1", "--threads", "1", "--timeout", "600", "--bind", "0.0.0.0:$PORT", "app:app"]
